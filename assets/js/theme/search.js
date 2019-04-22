@@ -1,7 +1,9 @@
-import { hooks } from '@bigcommerce/stencil-utils';
+import {
+    hooks
+} from '@bigcommerce/stencil-utils';
 import CatalogPage from './catalog';
+import $ from 'jquery';
 import FacetedSearch from './common/faceted-search';
-import compareProducts from './global/compare-products';
 import urlUtils from './common/url-utils';
 import Url from 'url';
 import collapsibleFactory from './common/collapsible';
@@ -70,8 +72,6 @@ export default class Search extends CatalogPage {
     }
 
     onReady() {
-        compareProducts(this.context.urls);
-
         const $searchForm = $('[data-advanced-search-form]');
         const $categoryTreeContainer = $searchForm.find('[data-search-category-tree]');
         const url = Url.parse(window.location.href, true);
@@ -136,6 +136,15 @@ export default class Search extends CatalogPage {
                 $searchForm.append(input);
             }
         });
+
+        //for b2b user
+        if (sessionStorage.getItem("bundleb2b_user") && sessionStorage.getItem("bundleb2b_user") != "none") {
+            $(".body").addClass("b2b-products");
+            this.handleCatalogProducts();
+        } else {
+            $(".navList-item .product-count").show();
+        }
+
     }
 
     loadTreeNodes(node, cb) {
@@ -144,9 +153,6 @@ export default class Search extends CatalogPage {
             data: {
                 selectedCategoryId: node.id,
                 prefix: 'category',
-            },
-            headers: {
-                'x-xsrf-token': window.BCData && window.BCData.csrf_token ? window.BCData.csrf_token : '',
             },
         }).done(data => {
             const formattedResults = [];
@@ -213,6 +219,16 @@ export default class Search extends CatalogPage {
             $searchHeading.html(content.heading);
             $searchCount.html(content.productCount);
 
+
+            if (sessionStorage.getItem("bundleb2b_user") && sessionStorage.getItem("bundleb2b_user") != "none") {
+                //for b2b user
+                this.handleCatalogProducts();
+            } else {
+                //for non b2b user
+                $(".navList-item .product-count").show();
+            }
+
+
             $('html, body').animate({
                 scrollTop: 0,
             }, 100);
@@ -247,5 +263,72 @@ export default class Search extends CatalogPage {
         }
 
         return false;
+    }
+
+    //for b2b
+    handleCatalogProducts() {
+        const catalog_products = JSON.parse(sessionStorage.getItem("catalog_products"));
+        const products = $(".product");
+
+        for (var product_id in catalog_products) {
+
+            const productSelector = `[catalog-product-${product_id}]`;
+            if ($(`${productSelector}`).length > 0) {
+
+                $(`${productSelector}`).attr("catalog-product", "true");
+
+                let base_price = $(`${productSelector}`).find(".price.price--withTax").text().replace("$", "").replace(",", "") || $(`${productSelector}`).find(".price.price--withoutTax").text().replace("$", "").replace(",", "");
+                let tier_price;
+                let catalog_price;
+                const variantArr = catalog_products[product_id] || [];
+                if (variantArr.length == 1) {
+                    tier_price = variantArr[0].tier_price || [];
+                    catalog_price = this.getCatalogPrice(base_price, tier_price, 1);
+                }
+                if (catalog_price) {
+                    $(`${productSelector}`).find(".price.price--withoutTax").text("$" + parseFloat(catalog_price).toFixed(2));
+                    $(`${productSelector}`).find(".price.price--withTax").text("$" + parseFloat(catalog_price).toFixed(2));
+                }
+            }
+        }
+
+        //product Gallery, for listing page
+        const $productGallery = $("[b2b-products-gallery]");
+        $productGallery.each(function() {
+            const catalogProductCount = $(this).find("[catalog-product]").length;
+            if (catalogProductCount == 0) {
+                $("[catalog-listing-wrap]").show();
+                $(this).parents(".page").html("We can't find products matching the selection.");
+            } else {
+                $("[catalog-listing-wrap]").show();
+                const $catalogProductCounter = $("[data-catalog-product-counter]");
+                if ($catalogProductCounter.length > 0) {
+                    $catalogProductCounter.text(catalogProductCount);
+                }
+            }
+        });
+
+    }
+
+    //for bundleb2b
+    getCatalogPrice(base_price, tier_price_array, qty) {
+        //let tier_price = base_price;
+        let tier_price = base_price;
+
+        for (let j = 0; j < tier_price_array.length; j++) {
+            const type = tier_price_array[j].type;
+            const base_qty = tier_price_array[j].qty;
+            const price = tier_price_array[j].price;
+
+            if (qty >= base_qty) {
+                if (type == "fixed") {
+                    tier_price = price;
+
+                } else {
+                    tier_price = base_price - base_price * price / 100;
+                }
+            }
+        }
+        return tier_price;
     }
 }

@@ -20,15 +20,15 @@ module.exports = {
                     loader: 'babel-loader',
                     options: {
                         plugins: [
-                            '@babel/plugin-syntax-dynamic-import', // add support for dynamic imports (used in app.js)
-                            'lodash', // Tree-shake lodash
+                            'dynamic-import-webpack', // Needed for dynamic imports.
+                            'lodash', // Automagically tree-shakes lodash.
+                            'transform-regenerator', // Transforms async and generator functions.
                         ],
                         presets: [
-                            ['@babel/preset-env', {
-                                loose: true, // Enable "loose" transformations for any plugins in this preset that allow them
-                                modules: false, // Don't transform modules; needed for tree-shaking
-                                useBuiltIns: 'usage', // Tree-shake babel-polyfill
-                                targets: '> 1%, last 2 versions, Firefox ESR',
+                            ['env', {
+                                loose: true, // Enable "loose" transformations for any plugins in this preset that allow them.
+                                modules: false, // Don't transform modules; needed for tree-shaking.
+                                useBuiltIns: true, // Tree-shake babel-polyfill.
                             }],
                         ],
                     },

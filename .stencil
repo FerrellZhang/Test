@@ -1,9 +1,6 @@
 {
   "normalStoreUrl": "https://ferrell-store.mybigcommerce.com",
   "port": 3000,
-  "username": "silkdev",
-  "token": "430a8a0187b0d32f4c087b22939f7abcf139f9ee",
-  
   "customLayouts": {
     "brand": {},
     "category": {},
@@ -20,6 +17,6 @@
     },
     "product": {}
   },
-  "clientId": "",
-  "accessToken": ""
+  "clientId": "qg45n87v8jbyn993aac41kouhkzkmfh",
+  "accessToken": "qkd9b74wwqtg71grvyzt5lsu8a3pwvw"
 }

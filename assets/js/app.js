@@ -1,5 +1,8 @@
 __webpack_public_path__ = window.__webpack_public_path__; // eslint-disable-line
 
+import 'babel-polyfill';
+import $ from 'jquery';
+import 'jquery-migrate';
 import Global from './theme/global';
 
 const getAccount = () => import('./theme/account');
@@ -27,27 +30,27 @@ const pageClasses = {
     createaccount: getLogin,
     getnewpassword: getLogin,
     forgotpassword: getLogin,
-    blog: noop,
-    blog_post: noop,
+    blog: () => import('./theme/blog'),
+    blog_post: () => import('./theme/blog-post'),
     brand: () => import('./theme/brand'),
-    brands: noop,
+    brands: () => import('./theme/brands'),
     cart: () => import('./theme/cart'),
     category: () => import('./theme/category'),
     compare: () => import('./theme/compare'),
     page_contact_form: () => import('./theme/contact-us'),
-    error: noop,
-    404: noop,
+    error: () => import('./theme/errors'),
+    404: () => import('./theme/404-error'),
     giftcertificates: () => import('./theme/gift-certificate'),
     giftcertificates_balance: () => import('./theme/gift-certificate'),
     giftcertificates_redeem: () => import('./theme/gift-certificate'),
-    default: noop,
-    page: noop,
+    default: () => import('./theme/home'),
+    page: () => import('./theme/page'),
     product: () => import('./theme/product'),
     amp_product_options: () => import('./theme/product'),
     search: () => import('./theme/search'),
-    rss: noop,
-    sitemap: noop,
-    newsletter_subscribe: noop,
+    rss: () => import('./theme/rss'),
+    sitemap: () => import('./theme/sitemap'),
+    newsletter_subscribe: () => import('./theme/subscribe'),
     wishlist: () => import('./theme/wishlist'),
     wishlists: () => import('./theme/wishlist'),
 };
@@ -66,32 +69,18 @@ window.stencilBootstrap = function stencilBootstrap(pageType, contextJSON = null
 
     return {
         load() {
-            $(() => {
+            $(async () => {
                 // Load globals
                 if (loadGlobal) {
                     Global.load(context);
                 }
 
-                const importPromises = [];
-
                 // Find the appropriate page loader based on pageType
                 const pageClassImporter = pageClasses[pageType];
                 if (typeof pageClassImporter === 'function') {
-                    importPromises.push(pageClassImporter());
+                    const PageClass = (await pageClassImporter()).default;
+                    PageClass.load(context);
                 }
-
-                // See if there is a page class default for a custom template
-                const customTemplateImporter = customClasses[context.template];
-                if (typeof customTemplateImporter === 'function') {
-                    importPromises.push(customTemplateImporter());
-                }
-
-                // Wait for imports to resolve, then call load() on them
-                Promise.all(importPromises).then(imports => {
-                    imports.forEach(imported => {
-                        imported.default.load(context);
-                    });
-                });
             });
         },
     };

@@ -1,10 +1,14 @@
 import PageManager from './page-manager';
+import $ from 'jquery';
 import _ from 'lodash';
 import giftCertCheck from './common/gift-certificate-validator';
 import utils from '@bigcommerce/stencil-utils';
 import ShippingEstimator from './cart/shipping-estimator';
-import { defaultModal } from './global/modal';
-import swal from './global/sweet-alert';
+import {
+    defaultModal
+} from './global/modal';
+import swal from 'sweetalert2';
+import config from './b2b/config';
 
 export default class Cart extends PageManager {
     onReady() {
@@ -26,6 +30,7 @@ export default class Cart extends PageManager {
         const minError = $el.data('quantityMinError');
         const maxError = $el.data('quantityMaxError');
         const newQty = $target.data('action') === 'inc' ? oldQty + 1 : oldQty - 1;
+
         // Does not quality for min/max quantity
         if (newQty < minQty) {
             return swal({
@@ -47,60 +52,18 @@ export default class Cart extends PageManager {
             if (response.data.status === 'succeed') {
                 // if the quantity is changed "1" from "0", we have to remove the row.
                 const remove = (newQty === 0);
+                //this.refreshContent(remove);
 
-                this.refreshContent(remove);
-            } else {
-                $el.val(oldQty);
-                swal({
-                    text: response.data.errors.join('\n'),
-                    type: 'error',
-                });
-            }
-        });
-    }
 
-    cartUpdateQtyTextChange($target, preVal = null) {
-        const itemId = $target.data('cartItemid');
-        const $el = $(`#qty-${itemId}`);
-        const maxQty = parseInt($el.data('quantityMax'), 10);
-        const minQty = parseInt($el.data('quantityMin'), 10);
-        const oldQty = preVal !== null ? preVal : minQty;
-        const minError = $el.data('quantityMinError');
-        const maxError = $el.data('quantityMaxError');
-        const newQty = parseInt(Number($el.val()), 10);
-        let invalidEntry;
+                //for bundleb2b
+                if (sessionStorage.getItem("bundleb2b_user") && sessionStorage.getItem("bundleb2b_user") != "none") {
+                    this.updateCatalogPrice(itemId);
+                } else {
+                    this.refreshContent(remove);
+                }
 
-        // Does not quality for min/max quantity
-        if (!newQty) {
-            invalidEntry = $el.val();
-            $el.val(oldQty);
-            return swal({
-                text: `${invalidEntry} is not a valid entry`,
-                type: 'error',
-            });
-        } else if (newQty < minQty) {
-            $el.val(oldQty);
-            return swal({
-                text: minError,
-                type: 'error',
-            });
-        } else if (maxQty > 0 && newQty > maxQty) {
-            $el.val(oldQty);
-            return swal({
-                text: maxError,
-                type: 'error',
-            });
-        }
 
-        this.$overlay.show();
-        utils.api.cart.itemUpdate(itemId, newQty, (err, response) => {
-            this.$overlay.hide();
 
-            if (response.data.status === 'succeed') {
-                // if the quantity is changed "1" from "0", we have to remove the row.
-                const remove = (newQty === 0);
-
-                this.refreshContent(remove);
             } else {
                 $el.val(oldQty);
                 swal({
@@ -212,9 +175,7 @@ export default class Cart extends PageManager {
     bindCartEvents() {
         const debounceTimeout = 400;
         const cartUpdate = _.bind(_.debounce(this.cartUpdate, debounceTimeout), this);
-        const cartUpdateQtyTextChange = _.bind(_.debounce(this.cartUpdateQtyTextChange, debounceTimeout), this);
         const cartRemoveItem = _.bind(_.debounce(this.cartRemoveItem, debounceTimeout), this);
-        let preVal;
 
         // cart update
         $('[data-cart-update]', this.$cartContent).on('click', event => {
@@ -224,17 +185,6 @@ export default class Cart extends PageManager {
 
             // update cart quantity
             cartUpdate($target);
-        });
-
-        // cart qty manually updates
-        $('.cart-item-qty-input', this.$cartContent).on('focus', function onQtyFocus() {
-            preVal = this.value;
-        }).change(event => {
-            const $target = $(event.currentTarget);
-            event.preventDefault();
-
-            // update cart quantity
-            cartUpdateQtyTextChange($target, preVal);
         });
 
         $('.cart-remove', this.$cartContent).on('click', event => {
@@ -424,5 +374,215 @@ export default class Cart extends PageManager {
 
         // initiate shipping estimator module
         this.shippingEstimator = new ShippingEstimator($('[data-shipping-estimator]'));
+    }
+
+    // for bundleb2b
+    // for simple products
+    getVariantIdByProductId(productId) {
+        let variantId;
+
+        if (this.catalog_products && this.catalog_products[productId]) {
+            const variantSkus = this.catalog_products[productId];
+            variantId = variantSkus[0].variant_id;
+        }
+        return variantId;
+    }
+
+    // for bundleb2b
+    handlePickListOptions(cartItemObj, cb) {
+        const cartItemId = cartItemObj.item_id;
+        const product_id = cartItemObj.product_id;
+        const variant_id = cartItemObj.variant_id;
+
+        utils.api.productAttributes.configureInCart(cartItemId, {
+            template: 'b2b/configure-product-data',
+        }, (err, response) => {
+            console.log(response.data);
+
+            let selectedPickListOptins = [];
+
+            if (response.data && response.data.options) {
+                const options = response.data.options;
+
+
+
+                for (let i = 0; i < options.length; i++) {
+                    const option = options[i];
+
+                    if (option.partial == "product-list") {
+                        const optionValues = option.values;
+
+                        for (let j = 0; j < optionValues.length; j++) {
+                            const optionValue = optionValues[j];
+
+                            if (optionValue.selected) {
+                                selectedPickListOptins.push({
+                                    "option_id": option.id,
+                                    "option_value": optionValue.id,
+                                    "option_data": optionValue.data
+                                });
+
+                            }
+                        }
+                    }
+                }
+
+                console.log(selectedPickListOptins);
+            }
+
+            if (selectedPickListOptins) {
+                $.ajax({
+                    type: "GET",
+                    url: `${config.apiRootUrl}/productvariants?store_hash=${config.storeHash}&product_id=${product_id}&variant_id=${variant_id}`,
+                    success: (data) => {
+                        console.log(data);
+                        let extras_list = [];
+
+
+                        for (let k = 0; k < selectedPickListOptins.length; k++) {
+                            let showCustomPrice = true;
+
+                            if (data && data.option_list) {
+                                const options = data.option_list;
+
+
+                                for (let j = 0; j < options.length; j++) {
+                                    const optionId = options[j].option_id;
+                                    const optionValue = options[j].option_value;
+
+                                    if (optionId == selectedPickListOptins[k].option_id && optionValue == selectedPickListOptins[k].option_value) {
+                                        showCustomPrice = false;
+
+
+                                    }
+
+
+
+                                }
+
+                                if (showCustomPrice) {
+                                    const extra_product_id = selectedPickListOptins[k].option_data;
+                                    const extra_variant_id = this.getVariantIdByProductId(extra_product_id);
+                                    if (extra_variant_id) {
+                                        extras_list.push({
+                                            "extra_product_id": extra_product_id,
+                                            "extra_variant_id": extra_variant_id
+                                        });
+                                    } else {
+                                        extras_list.push({
+                                            "extra_product_id": extra_product_id
+                                        });
+                                    }
+
+                                }
+                            }
+
+                        }
+
+                        if (extras_list) {
+                            cartItemObj.extras_list = _.cloneDeep(extras_list);
+                        }
+
+                        if (cb) {
+                            cb();
+                        }
+
+
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {
+                        console.log("error", JSON.stringify(jqXHR));
+                    }
+                });
+            } else {
+                if (cb) {
+                    cb();
+                }
+
+            }
+
+
+        });
+
+    }
+
+    //for bundleb2b
+    updateCatalogPrice(cartItemId, cb) {
+        this.$overlay.show();
+        $.ajax({
+            type: "GET",
+            url: "../api/storefront/carts",
+            contentType: "application/json",
+            accept: "application/json",
+            success: (data) => {
+                console.log("cart", data);
+                if (data && data.length > 0) {
+                    const cartId = data[0].id;
+                    console.log("cartId", cartId);
+                    //const cartItems = data[0].lineItems.physicalItems;
+                    const cartItems_all = data[0].lineItems.physicalItems;
+                    const cartItems = cartItems_all.filter(function(item) {
+                        return item.parentId == null;
+                    });
+
+                    for (let i = 0; i < cartItems.length; i++) {
+
+                        const cartItem = cartItems[i];
+                        const itemId = cartItem.id;
+
+
+                        if (cartItemId == itemId) {
+                            const itemProductId = cartItem.productId;
+                            const itemVariantId = cartItem.variantId;
+                            const itemQty = cartItem.quantity;
+                            const gCatalogId = sessionStorage.getItem("catalog_id");
+
+                            const cartItemObj = {
+                                "item_id": itemId,
+                                "product_id": itemProductId,
+                                "variant_id": itemVariantId,
+                                "quantity": itemQty,
+                                "catalog_id": gCatalogId
+                            };
+
+                            console.log("putdata", JSON.stringify(cartItemObj));
+
+                            this.handlePickListOptions(cartItemObj, () => {
+                                console.log("putdata2", JSON.stringify(cartItemObj));
+
+                                const bypass_store_hash = `${config.storeHash}`;
+
+                                $.ajax({
+                                    type: "PUT",
+                                    url: `${config.apiRootUrl}/cart?store_hash=${bypass_store_hash}&cart_id=${cartId}`,
+                                    data: JSON.stringify(cartItemObj),
+                                    success: (data) => {
+                                        console.log("update price done.");
+                                        window.location.reload();
+                                    },
+                                    error: (jqXHR, textStatus, errorThrown) => {
+                                        this.$overlay.hide();
+                                        alert("update catalog price error");
+                                    }
+                                });
+                            });
+
+                        }
+
+                    }
+
+                } else {
+                    this.$overlay.hide();
+                }
+            },
+            error: (jqXHR, textStatus, errorThrown) => {
+                this.$overlay.hide();
+                console.log("error", JSON.stringify(jqXHR));
+                swal({
+                    type: "error",
+                    text: "There has some error, please try again."
+                });
+            }
+        });
+
     }
 }
